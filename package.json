@@ -1,0 +1,31 @@
+{
+  "name": "brain-dump",
+  "version": "1.0.0",
+  "description": "Brain Dump: a handwriting-first notes app for iPad (installable web app on Cloudflare)",
+  "scripts": {
+    "vendor": "node scripts/vendor.mjs",
+    "dev": "wrangler dev --local --port 8787",
+    "deploy": "wrangler deploy",
+    "test": "node tests/smoke.mjs",
+    "templates": "node scripts/render-templates.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rossisnc/notes_app.git"
+  },
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/rossisnc/notes_app/issues"
+  },
+  "homepage": "https://github.com/rossisnc/notes_app#readme",
+  "devDependencies": {
+    "pdfjs-dist": "^4.10.38",
+    "perfect-freehand": "^1.2.3",
+    "wrangler": "^4.160.1"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0"
+  },
+  "private": true,
+  "type": "module"
+}
