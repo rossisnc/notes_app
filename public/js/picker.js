@@ -21,7 +21,7 @@ export function pickTemplate({ title = 'Pick a page style' } = {}) {
     for (const t of tpl.builtinList()) {
       if (t.group !== group) {
         group = t.group;
-        grid.append(heading(group === 'mine' ? 'My Canva pages' : 'Built-in pages'));
+        grid.append(heading(group === 'mine' ? 'My Canva pages' : 'Notebook with tabs'));
       }
       grid.append(tile(t.name, t.thumb || tpl.templateURL(t.id, last.w, last.h), { kind: 'template', id: t.id }, t));
     }

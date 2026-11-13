@@ -60,12 +60,12 @@ function defaultTitle(bg) {
   const now = new Date();
   const day = store.niceDate(now);
   const id = bg.kind === 'template' ? bg.id : '';
-  if (id === 'weekly') {
+  if (id === 'weekly' || id === 'lemon-week') {
     const monday = new Date(now);
     monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
     return `Week of ${store.niceDate(monday)}`;
   }
-  if (id === 'lists4') return `Lists · ${day}`;
+  if (id === 'lists4' || id.startsWith('checklists') || id === 'notes-checklist') return `Lists · ${day}`;
   if (id === 'tabbed') return `Notebook · ${day}`;
   return `${day}, ${now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
 }

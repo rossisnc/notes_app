@@ -76,7 +76,7 @@ export function newPage(noteId, bg, size, extra = {}) {
 }
 
 /** Create a note with its first page(s). templateBg: {kind:'template', id} | {kind:'custom', id} */
-export async function createNote({ parentId = null, title, bg = { kind: 'template', id: 'lined' } } = {}) {
+export async function createNote({ parentId = null, title, bg = { kind: 'template', id: 'lined-stone' } } = {}) {
   const size = await sizeForBg(bg);
   const now = Date.now();
   const note = { id: uid(), type: 'note', parentId, title: title || `${niceDate()} note`,
@@ -102,7 +102,7 @@ export async function createNote({ parentId = null, title, bg = { kind: 'templat
 export async function createNoteFromImages({ parentId = null, title, images }) {
   const now = Date.now();
   const note = { id: uid(), type: 'note', parentId, title: title || `Scan ${niceDate()}`,
-    createdAt: now, updatedAt: now, pageIds: [], lastBg: { kind: 'template', id: 'blank' } };
+    createdAt: now, updatedAt: now, pageIds: [], lastBg: { kind: 'template', id: 'lined-stone' } };
   const pages = images.map((img) => newPage(note.id, { kind: 'image', assetId: img.assetId }, { w: img.w, h: img.h }));
   note.pageIds = pages.map((p) => p.id);
   await db.batch([

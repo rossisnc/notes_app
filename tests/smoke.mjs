@@ -44,7 +44,7 @@ async function newNoteWith(templateName) {
   await page.waitForSelector('.editor .page canvas.ink');
   await page.waitForTimeout(300);
 }
-await newNoteWith('Lined');
+await newNoteWith('Lined · Stone');
 check('editor opens', await page.locator('.editor').count() === 1);
 
 async function pageBox(i = 0) { return page.locator('.page').nth(i).boundingBox(); }
@@ -162,7 +162,7 @@ await page.screenshot({ path: `${SHOTS}/04-tabbed.png` });
 await page.click('[aria-label="Back to notes"]');
 
 // other templates render
-for (const name of ['Weekly planner', 'Four lists', 'Lavender', 'Dark night']) {
+for (const name of ['4 Checklists · Bright', 'Five Boxes', 'Lined · Lavender', 'Lined · Charcoal']) {
   await newNoteWith(name);
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${SHOTS}/05-${name.replace(/\s+/g, '-').toLowerCase()}.png` });
@@ -175,6 +175,9 @@ await page.click('text=New note');
 await page.waitForSelector('.tpl-grid');
 const canvaTiles = await page.locator('.tpl-tile[aria-label^="Lined · "], .tpl-tile[aria-label="Lemon Week"], .tpl-tile[aria-label="Blocks"]').count();
 await page.screenshot({ path: `${SHOTS}/09-picker.png` });
+const hidden = await page.locator('.tpl-tile[aria-label="Weekly planner"], .tpl-tile[aria-label="Four lists"], .tpl-tile[aria-label="Dark night"], .tpl-tile[aria-label="Lined"], .tpl-tile[aria-label="Blank"]').count();
+const tabbedShown = await page.locator('.tpl-tile[aria-label="Tabbed notebook"]').count();
+check('picker shows only Canva pages + Tabbed notebook', hidden === 0 && tabbedShown === 1, `hidden=${hidden} tabbed=${tabbedShown}`);
 await page.click('.tpl-tile[aria-label="Lemon Week"]');
 await page.waitForSelector('.editor .page img.bg');
 await page.waitForFunction(() => { const i = document.querySelector('.page img.bg'); return i && i.complete && i.naturalWidth > 0; });

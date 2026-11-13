@@ -26,7 +26,7 @@ export async function openEditor(noteId, { onClose, pageId } = {}) {
   const pageList = await store.getPages(note);
   if (!pageList.length) {
     const size = await store.pageSize();
-    const p = store.newPage(note.id, note.lastBg || { kind: 'template', id: 'lined' }, size);
+    const p = store.newPage(note.id, note.lastBg || tpl.DEFAULT_BG, size);
     await store.insertPages(note, [p]);
     pageList.push(p);
   }
@@ -534,7 +534,7 @@ async function flushSave() {
 // ---------------------------------------------------------------- pages: add / change / delete
 async function addPage(afterIndex, bg) {
   const ref = S.pages.get(S.note.pageIds[afterIndex]) || S.pages.get(S.note.pageIds[S.note.pageIds.length - 1]);
-  const useBg = bg || (ref && ref.bg.kind !== 'image' ? ref.bg : S.note.lastBg) || { kind: 'template', id: 'lined' };
+  const useBg = bg || (ref && ref.bg.kind !== 'image' ? ref.bg : S.note.lastBg) || tpl.DEFAULT_BG;
   const size = await store.sizeForBg(useBg);
   const extra = {};
   if (ref && ref.tabId) {

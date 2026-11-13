@@ -244,6 +244,10 @@ T.tabbed = {
 };
 
 export const BUILTIN_IDS = ['blank', 'lined', 'lavender', 'dark', 'lists4', 'weekly', 'tabbed'];
+// Only these built-ins show in the picker (the owner's Canva pages cover the rest).
+// Hidden ones still draw correctly on any page that already uses them.
+const PICKER_BUILTINS = ['tabbed'];
+export const DEFAULT_BG = { kind: 'template', id: 'lined-stone' };
 
 // The owner's own Canva pages, shipped with the app in public/templates/ (1640 × 2360 PNGs).
 const CANVA = [
@@ -258,7 +262,7 @@ export const CANVA_FILES = CANVA.flatMap((t) => [t.file, t.thumb]);
 export function builtinList() {
   return [
     ...CANVA.map((t) => ({ id: t.id, name: t.name, dark: t.dark, kind: 'template', group: 'mine', thumb: t.thumb })),
-    ...BUILTIN_IDS.map((id) => ({ id, name: T[id].name, dark: T[id].dark, kind: 'template', group: 'builtin' })),
+    ...PICKER_BUILTINS.map((id) => ({ id, name: T[id].name, dark: T[id].dark, kind: 'template', group: 'builtin' })),
   ];
 }
 
