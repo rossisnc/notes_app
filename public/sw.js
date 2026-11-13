@@ -1,11 +1,15 @@
 // Offline support: the app's own files are cached so Brain Dump opens with no signal.
 // Strategy: serve from cache instantly, refresh the cache in the background (new versions show up next launch).
-const CACHE = 'braindump-v1';
+const CACHE = 'braindump-v2';
 const CORE = [
   '/', '/css/app.css', '/manifest.webmanifest',
   '/js/main.js', '/js/db.js', '/js/store.js', '/js/ui.js', '/js/ink.js', '/js/shapes.js', '/js/templates.js',
   '/js/editor.js', '/js/library.js', '/js/picker.js', '/js/importer.js', '/js/sync.js', '/js/settings.js',
   '/vendor/perfect-freehand.mjs', '/icons/icon-180.png', '/icons/icon-192.png',
+  // the owner's Canva pages (keep in sync with CANVA in js/templates.js)
+  ...['lined-stone', 'lined-peach', 'lined-lavender', 'lined-pink', 'lined-black', 'lined-charcoal', 'notes-checklist',
+    'checklists-bright', 'checklists-soft', 'lemon-week', 'five-boxes', 'blocks']
+    .flatMap((n) => [`/templates/${n}.png`, `/templates/thumbs/${n}.jpg`]),
 ];
 
 self.addEventListener('install', (e) => {

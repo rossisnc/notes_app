@@ -171,6 +171,8 @@ mark { background: #ffe58a; color: #1a1a1a; border-radius: 3px; padding: 0 2px; 
 
 /* ---------- template picker ---------- */
 .tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; padding-top: 6px; }
+.tpl-group { grid-column: 1 / -1; margin: 10px 0 -4px; font-size: 15px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+.tpl-group:first-child { margin-top: 0; }
 .tpl-tile { display: flex; flex-direction: column; gap: 8px; align-items: center; border: 0; background: transparent; cursor: pointer; padding: 0; }
 .tpl-thumb { width: 100%; aspect-ratio: 1640 / 2360; border-radius: 8px; overflow: hidden; background: #fff; box-shadow: 0 0 0 1px var(--line); }
 .tpl-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }

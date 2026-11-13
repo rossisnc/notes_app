@@ -170,6 +170,25 @@ for (const name of ['Weekly planner', 'Four lists', 'Lavender', 'Dark night']) {
   await page.waitForSelector('.library');
 }
 
+// the owner's Canva pages are in the picker and load as page backgrounds
+await page.click('text=New note');
+await page.waitForSelector('.tpl-grid');
+const canvaTiles = await page.locator('.tpl-tile[aria-label^="Lined · "], .tpl-tile[aria-label="Lemon Week"], .tpl-tile[aria-label="Blocks"]').count();
+await page.screenshot({ path: `${SHOTS}/09-picker.png` });
+await page.click('.tpl-tile[aria-label="Lemon Week"]');
+await page.waitForSelector('.editor .page img.bg');
+await page.waitForFunction(() => { const i = document.querySelector('.page img.bg'); return i && i.complete && i.naturalWidth > 0; });
+const lemon = await page.evaluate(() => { const i = document.querySelector('.page img.bg'); return { src: i.getAttribute('src'), w: i.naturalWidth }; });
+check('Canva pages in picker and load (8 tiles checked)', canvaTiles === 8 && lemon.src === '/templates/lemon-week.png' && lemon.w === 1640, JSON.stringify({ canvaTiles, ...lemon }));
+await page.screenshot({ path: `${SHOTS}/10-lemon.png` });
+await page.click('[aria-label="Back to notes"]');
+await page.waitForSelector('.library');
+await newNoteWith('Lined · Black');
+const blackDark = await page.evaluate(() => document.querySelector('.page').classList.contains('is-dark'));
+check('black Canva page is treated as a dark page', blackDark);
+await page.click('[aria-label="Back to notes"]');
+await page.waitForSelector('.library');
+
 // move "Grocery list" into Business ideas › Etsy, then search
 await page.click('.row:has-text("Grocery list") .row-more');
 await page.click('.action:has-text("Move to")');
@@ -234,6 +253,7 @@ await page.click('[aria-label="Back to notes"]');
 await page.waitForSelector('.library');
 await page.click('text=New note');
 await page.waitForSelector('.tpl-grid');
+await page.waitForSelector('.tpl-tile[aria-label="Peach page"]', { timeout: 5000 }).catch(() => {});
 check('custom template appears in picker', (await page.locator('.tpl-tile[aria-label="Peach page"]').count()) === 1);
 await page.keyboard.press('Escape');
 await page.click('.sheet-head [aria-label="Close"]');

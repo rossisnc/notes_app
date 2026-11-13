@@ -245,12 +245,27 @@ T.tabbed = {
 
 export const BUILTIN_IDS = ['blank', 'lined', 'lavender', 'dark', 'lists4', 'weekly', 'tabbed'];
 
+// The owner's own Canva pages, shipped with the app in public/templates/ (1640 × 2360 PNGs).
+const CANVA = [
+  ['lined-stone', 'Lined · Stone'], ['lined-peach', 'Lined · Peach'], ['lined-lavender', 'Lined · Lavender'],
+  ['lined-pink', 'Lined · Pink'], ['lined-black', 'Lined · Black', true], ['lined-charcoal', 'Lined · Charcoal', true],
+  ['notes-checklist', 'Notes + Checklist'], ['checklists-bright', '4 Checklists · Bright'],
+  ['checklists-soft', '4 Checklists · Soft'], ['lemon-week', 'Lemon Week'], ['five-boxes', 'Five Boxes'], ['blocks', 'Blocks'],
+].map(([id, name, dark = false]) => ({ id, name, dark, file: `/templates/${id}.png`, thumb: `/templates/thumbs/${id}.jpg` }));
+const CANVA_BY_ID = new Map(CANVA.map((t) => [t.id, t]));
+export const CANVA_FILES = CANVA.flatMap((t) => [t.file, t.thumb]);
+
 export function builtinList() {
-  return BUILTIN_IDS.map((id) => ({ id, name: T[id].name, dark: T[id].dark, kind: 'template' }));
+  return [
+    ...CANVA.map((t) => ({ id: t.id, name: t.name, dark: t.dark, kind: 'template', group: 'mine', thumb: t.thumb })),
+    ...BUILTIN_IDS.map((id) => ({ id, name: T[id].name, dark: T[id].dark, kind: 'template', group: 'builtin' })),
+  ];
 }
 
 const urlCache = new Map();
 export function templateURL(id, w, h, opts = {}) {
+  const img = CANVA_BY_ID.get(id);
+  if (img) return img.file;
   const t = T[id] || T.blank;
   const key = `${id}|${w}|${h}|${opts.accent || ''}`;
   if (!urlCache.has(key)) urlCache.set(key, 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(t.draw(w, h, opts)));
@@ -285,7 +300,7 @@ export async function bgURL(bg, page, opts = {}) {
 
 export async function isDarkBg(bg) {
   if (!bg) return false;
-  if (bg.kind === 'template') return !!(T[bg.id] && T[bg.id].dark);
+  if (bg.kind === 'template') return !!((CANVA_BY_ID.get(bg.id) || T[bg.id] || {}).dark);
   if (bg.kind === 'custom') {
     const t = await db.get('templates', bg.id);
     return !!(t && t.dark);
