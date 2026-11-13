@@ -60,4 +60,18 @@ jobs:
           sed -i "s/^database_id = .*/database_id = \"$ID\"/" wrangler.toml
 
       - name: Deploy
-        run: npx wrangler deploy
+        run: npx wrangler deploy | tee deploy.log
+
+      - name: Check the live app answers
+        run: |
+          URL=$(grep -Eo 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          echo "Live at $URL"
+          for i in 1 2 3 4 5 6; do
+            STATUS=$(curl -fsS "$URL/api/status" || true)
+            PAGE=$(curl -fsS -o /dev/null -w '%{http_code}' "$URL/" || true)
+            echo "api: $STATUS  page: $PAGE"
+            if echo "$STATUS" | grep -q '"setup"' && [ "$PAGE" = "200" ]; then exit 0; fi
+            sleep 5
+          done
+          echo "::error::The deployed app did not answer"
+          exit 1
