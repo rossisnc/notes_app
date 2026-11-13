@@ -31,5 +31,5 @@ It's an installable web app (no App Store). It runs offline on the iPad and back
 - `public/`: the app (plain ES modules, no build step). `worker/index.js`: Cloudflare Worker (serves `public/`, plus `/api/*` for backup and handwriting reading). D1 database `brain-dump`.
 - `npm run vendor` copies perfect-freehand and pdf.js into `public/vendor/`.
 - `npm run dev` runs locally on :8787 (local D1). `npm test` is the end-to-end smoke test (needs the dev server running).
-- `npm run deploy` deploys (needs a Cloudflare API token with Workers + D1 edit). The D1 schema creates itself on first request.
+- Deploys happen automatically: every push runs `.github/workflows/deploy.yml`, which uses the `CLOUDFLARE_API_TOKEN` repository secret (Workers + D1 edit), creates the `brain-dump` D1 database if needed, and runs `wrangler deploy`. The D1 schema creates itself on first request.
 - Bump `CACHE` in `public/sw.js` when you change the list of core files. Otherwise new versions reach the iPad on the next launch after a deploy.
