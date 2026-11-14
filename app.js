@@ -20,6 +20,7 @@ function h(tag, attrs, ...kids) {
     if (k === 'class') el.className = v;
     else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
     else if (k === 'value' || k === 'checked' || k === 'disabled') el[k] = v;
+    else if (k === 'style') el.style.cssText = v;
     else el.setAttribute(k, v === true ? '' : v);
   }
   for (const kid of kids.flat(Infinity)) {
@@ -416,12 +417,17 @@ function noteCard(n, { trash = false, showNb = true } = {}) {
   return card;
 }
 
+const inFrame = (() => { try { return window.self !== window.top; } catch { return true; } })();
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
 function renderBanner(body) {
   const dismissed = lsGet('catchall:dismiss', {});
   const today = todayStr();
   const live = state.notes.filter((n) => !n.deletedAt && !noteEmpty(n));
+  if (inFrame) {
+    body.append(banner('👀', 'Test-drive copy. Try everything, including the Pencil, but don’t keep anything important here: notes in this preview may not be saved, and backups don’t work in it.', null, 'preview'));
+    return;
+  }
   if (!isStandalone() && dismissed.install !== today && state.view.kind !== 'settings') {
     body.append(banner('📲', 'Put this on your Home Screen so it opens like a real app (and keeps your notes safer): in Safari, tap Share, then “Add to Home Screen”.', null, 'install'));
     return;
@@ -1032,6 +1038,7 @@ const safeName = (s) => (s || 'note').replace(/[^\w\- ]+/g, '').trim().slice(0, 
 // Hands a file to the iPad share sheet (→ Save to Files / iCloud Drive / AirDrop),
 // or downloads it where sharing files isn't supported.
 async function saveFile(file) {
+  if (inFrame) { toast('Saving files doesn’t work in this preview. It works in the installed app.', { ms: 5000 }); return false; }
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try { await navigator.share({ files: [file] }); return true; } catch (e) { if (e.name === 'AbortError') return false; }
   }
@@ -1191,7 +1198,9 @@ function welcomeNote() {
 }
 
 async function init() {
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+  try {
+    if (!inFrame && 'serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+  } catch { /* not allowed here */ }
 
   let notes = [], notebooks = [], meta = [];
   try {
