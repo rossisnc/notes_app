@@ -7,6 +7,7 @@ import * as tpl from './templates.js';
 import { recognize, looksLikeScratch, scratchTargets, distToStroke, strokeBox, fromXY, lassoSelect } from './shapes.js';
 import { el, icon, iconBtn, popover, actions, confirmBox, promptBox, toast, sheet } from './ui.js';
 import { pickTemplate } from './picker.js';
+import { CHECKBOXES } from './checkboxes.js';
 import { importAsPages } from './importer.js';
 
 const HOLD_MS = 550;
@@ -32,7 +33,7 @@ export async function openEditor(noteId, { onClose, pageId } = {}) {
   }
   S = {
     note, pages: new Map(pageList.map((p) => [p.id, p])), mounted: new Map(),
-    undo: [], redo: [], dirty: new Set(), saveTimer: null, active: null, currentPageId: pageList[0].id,
+    undo: [], redo: [], dirty: new Set(), inkDirty: new Set(), saveTimer: null, active: null, currentPageId: pageList[0].id,
     onClose, cssW: 800,
   };
   buildDOM();
@@ -214,6 +215,7 @@ async function mount(id, wrap) {
   setBackground(id);
   renderInk(id);
   renderTabs(id);
+  renderChecks(id);
 }
 
 async function setBackground(id) {
@@ -500,6 +502,66 @@ function onTouchEnd(e) {
   }
 }
 
+// ---------------------------------------------------------------- tick boxes on the owner's Canva pages
+// Tap a printed box or circle (Pencil or finger) to tick it; tap again to clear it.
+const TICK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.8l4.6 4.7L19.6 6.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+function boxesFor(page) {
+  return page && page.bg && page.bg.kind === 'template' ? CHECKBOXES[page.bg.id] : null;
+}
+
+function renderChecks(id) {
+  const m = S.mounted.get(id);
+  const page = S.pages.get(id);
+  if (!m || !page) return;
+  m.wrap.querySelector('.ticks')?.remove();
+  const spec = boxesFor(page);
+  if (!spec) return;
+  const checks = page.checks || {};
+  const pct = (v, total) => (v / total) * 100 + '%';
+  const layer = el('div', { class: `ticks ${spec.shape}` }, spec.boxes.map(([x, y, w, h], i) => {
+    const on = !!checks[i];
+    // the tap target is a little bigger than the printed box so it's easy to hit
+    const pad = Math.max(0, (88 - w) / 2);
+    const b = el('button', {
+      class: `tick ${on ? 'on' : ''}`, role: 'checkbox', 'aria-checked': String(on), 'aria-label': `Tick box ${i + 1}`,
+      style: { left: pct(x - pad, page.w), top: pct(y - pad, page.h), width: pct(w + 2 * pad, page.w), height: pct(h + 2 * pad, page.h) },
+      html: TICK_SVG,
+      onclick: (e) => { e.stopPropagation(); toggleCheck(page, i); },
+    });
+    b.style.setProperty('--box', pct(w, w + 2 * pad)); // custom properties need setProperty
+    return b;
+  }));
+  m.wrap.append(layer);
+}
+
+function toggleCheck(page, i) {
+  const before = { ...(page.checks || {}) };
+  const after = { ...before };
+  if (after[i]) delete after[i]; else after[i] = 1;
+  page.checks = after;
+  pushUndo({ type: 'checks', changes: [{ pageId: page.id, before, after }] });
+  renderChecks(page.id);
+  markDirty(page.id, { ink: false });
+}
+
+function hasTicks(page) {
+  return !!(page && page.checks && Object.keys(page.checks).length);
+}
+
+function uncheckAll(pages) {
+  const changes = pages.filter(hasTicks).map((p) => ({ pageId: p.id, before: { ...p.checks }, after: {} }));
+  if (!changes.length) return;
+  for (const ch of changes) {
+    const p = S.pages.get(ch.pageId);
+    p.checks = {};
+    renderChecks(p.id);
+    markDirty(p.id, { ink: false });
+  }
+  pushUndo({ type: 'checks', changes });
+  toast(changes.length > 1 ? `Unchecked boxes on ${changes.length} pages` : 'Unchecked all boxes');
+}
+
 // ---------------------------------------------------------------- select tool
 // Circle ink with the lasso (or tap one stroke) to select it. Then drag the box to move it,
 // drag a corner to resize it, or use the little bar to recolour or delete it.
@@ -726,6 +788,17 @@ function pushUndo(action) {
 }
 
 function apply(action, reverse) {
+  if (action.type === 'checks') {
+    for (const ch of action.changes) {
+      const p = S.pages.get(ch.pageId);
+      if (!p) continue;
+      p.checks = { ...(reverse ? ch.before : ch.after) };
+      renderChecks(p.id);
+      markDirty(p.id, { ink: false });
+    }
+    if (action.changes[0] && !S.mounted.has(action.changes[0].pageId)) scrollToPage(action.changes[0].pageId);
+    return;
+  }
   const page = S.pages.get(action.pageId);
   if (!page) return;
   clearSelection();
@@ -765,8 +838,9 @@ function redo() {
 }
 
 // ---------------------------------------------------------------- saving
-function markDirty(pageId) {
+function markDirty(pageId, { ink = true } = {}) {
   S.dirty.add(pageId);
+  if (ink) S.inkDirty.add(pageId);
   clearTimeout(S.saveTimer);
   S.saveTimer = setTimeout(flushSave, 700);
 }
@@ -775,11 +849,13 @@ async function flushSave() {
   if (!S) return;
   clearTimeout(S.saveTimer);
   const ids = [...S.dirty];
+  const inkIds = new Set(S.inkDirty);
   S.dirty.clear();
+  S.inkDirty.clear();
   for (const id of ids) {
     const page = S.pages.get(id);
     if (!page) continue;
-    await store.savePage(page, { ink: true });
+    await store.savePage(page, { ink: inkIds.has(id) });
   }
   if (ids.length) await store.saveItem(S.note);
 }
@@ -860,6 +936,8 @@ function addPagePopover(anchor) {
 async function moreMenu() {
   const idx = S.note.pageIds.indexOf(S.currentPageId);
   const choice = await actions('This page & note', [
+    hasTicks(S.pages.get(S.currentPageId)) ? { label: 'Uncheck all boxes on this page', value: 'uncheck-page', icon: 'check' } : null,
+    S.note.pageIds.filter((pid) => hasTicks(S.pages.get(pid))).length > 1 ? { label: 'Uncheck all boxes in this note', value: 'uncheck-note', icon: 'check' } : null,
     { label: "Change this page's template…", value: 'change', icon: 'page' },
     S.note.tabs ? { label: 'Edit tabs…', value: 'tabs', icon: 'notes' } : null,
     idx > 0 ? { label: 'Move page up', value: 'up' } : null,
@@ -868,6 +946,8 @@ async function moreMenu() {
   ]);
   if (!choice || !S) return;
   const page = S.pages.get(S.currentPageId);
+  if (choice === 'uncheck-page') { uncheckAll([page]); return; }
+  if (choice === 'uncheck-note') { uncheckAll(S.note.pageIds.map((pid) => S.pages.get(pid)).filter(Boolean)); return; }
   if (choice === 'change') {
     const bg = await pickTemplate({ title: "This page's template" });
     if (bg && page) {
@@ -878,6 +958,7 @@ async function moreMenu() {
       await store.saveItem(S.note);
       layoutPages();
       setBackground(page.id);
+      renderChecks(page.id);
     }
   } else if (choice === 'tabs') {
     manageTabs();

@@ -8,6 +8,7 @@ It's an installable web app (no App Store). It runs offline on the iPad and back
 
 - **Notes & folders list.** A simple list of folders, sub-folders, notes and sub-notes. Notes can sit outside folders too. Deleted items stay in "Recently deleted" for 30 days.
 - **One pen.** Three thicknesses and 7 ink colours (black, white, aqua, green, lavender, pink, hot pink). The Pencil writes and your finger scrolls.
+- **Tap-to-tick boxes.** On the checklist pages and Lemon Week, tap a printed box or circle to tick it; ⋯ → "Uncheck all" resets a list for reuse.
 - **Select tool.** Lasso ink (or tap one stroke), then drag to move, drag a corner to resize, or tap a colour / trash on the bar above it.
 - **Scratch-out erase.** Scribble back and forth over ink to delete it. There's also an eraser button.
 - **Shape snapping.** Draw a line, circle, rectangle, triangle or star and hold the Pencil still for a moment.

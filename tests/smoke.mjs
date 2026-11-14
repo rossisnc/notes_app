@@ -265,6 +265,50 @@ await page.click('.palette [aria-label="Black"]');
 await page.click('[aria-label="Back to notes"]');
 await page.waitForSelector('.library');
 
+// ---- tick boxes on the Canva checklist pages
+await newNoteWith('4 Checklists · Bright');
+await page.waitForSelector('.page .tick');
+const tickCount = await page.locator('.page').first().locator('.tick').count();
+const pageState = () => page.evaluate(async () => {
+  const req = indexedDB.open('braindump');
+  const db = await new Promise((r) => { req.onsuccess = () => r(req.result); });
+  const all = await new Promise((r) => { const q = db.transaction('items').objectStore('items').getAll(); q.onsuccess = () => r(q.result); });
+  const note = all.filter((i) => i.type === 'note').sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  const pg = await new Promise((r) => { const q = db.transaction('pages').objectStore('pages').get(note.pageIds[0]); q.onsuccess = () => r(q.result); });
+  return { checks: Object.keys(pg.checks || {}).map(Number).sort((a, b) => a - b), strokes: pg.strokes.length, inkAt: pg.inkAt };
+});
+const firstPage = page.locator('.page').first();
+await firstPage.locator('.tick').nth(0).click();
+await firstPage.locator('.tick').nth(4).click();
+await page.waitForTimeout(900);
+let ps = await pageState();
+check('tapping printed boxes ticks them (44 on the page, no stray ink)', tickCount === 44 && JSON.stringify(ps.checks) === '[0,4]' && ps.strokes === 0 && !ps.inkAt, JSON.stringify({ tickCount, ...ps }));
+await page.screenshot({ path: `${SHOTS}/13-ticks.png` });
+await firstPage.locator('.tick').nth(4).click();
+await page.waitForTimeout(900);
+ps = await pageState();
+check('tapping again clears a tick', JSON.stringify(ps.checks) === '[0]', JSON.stringify(ps.checks));
+await firstPage.locator('.tick').nth(10).click();
+await page.click('[aria-label="More"]');
+await page.click('.action:has-text("Uncheck all boxes on this page")');
+await page.waitForTimeout(900);
+const cleared = (await pageState()).checks.length;
+await page.click('[aria-label="Undo"]');
+await page.waitForTimeout(900);
+ps = await pageState();
+check('"Uncheck all" clears the page, undo brings ticks back', cleared === 0 && JSON.stringify(ps.checks) === '[0,10]', `cleared=${cleared} after undo=${JSON.stringify(ps.checks)}`);
+await page.click('[aria-label="Back to notes"]');
+await page.waitForSelector('.library');
+await newNoteWith('Lemon Week');
+await page.waitForSelector('.page .tick');
+const lemonTicks = await page.locator('.page').first().locator('.tick').count();
+await page.locator('.page').first().locator('.tick').nth(15).click();
+await page.waitForTimeout(400);
+await page.screenshot({ path: `${SHOTS}/14-lemon-ticks.png` });
+check('lemon planner has 22 tappable circles', lemonTicks === 22, `found ${lemonTicks}`);
+await page.click('[aria-label="Back to notes"]');
+await page.waitForSelector('.library');
+
 // tabbed notebook
 await newNoteWith('Tabbed notebook');
 const tabs = await page.locator('.page').first().locator('.tab').count();
