@@ -258,7 +258,7 @@ function convexHull(P) {
   return lower.concat(upper);
 }
 
-function inPoly(p, poly) {
+export function inPoly(p, poly) {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
     const a = poly[i], b = poly[j];
@@ -316,4 +316,17 @@ export function strokeBox(pts) {
     if (x < minX) minX = x; if (y < minY) minY = y; if (x > maxX) maxX = x; if (y > maxY) maxY = y;
   }
   return { minX, minY, maxX, maxY };
+}
+
+/** Indexes of strokes that are mostly (half or more) inside a lasso loop. */
+export function lassoSelect(lassoPts, strokes) {
+  const L = toXY(lassoPts);
+  if (L.length < 3) return [];
+  const out = [];
+  strokes.forEach((st, idx) => {
+    let inside = 0, n = 0;
+    for (let i = 0; i < st.pts.length; i += 3) { n++; if (inPoly({ x: st.pts[i], y: st.pts[i + 1] }, L)) inside++; }
+    if (n && inside / n >= 0.5) out.push(idx);
+  });
+  return out;
 }

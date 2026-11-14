@@ -86,6 +86,7 @@ export async function openSettings() {
     el('ul', { class: 'tips' },
       el('li', {}, el('strong', {}, 'Erase: '), 'scribble back and forth over ink to delete it — or use the eraser.'),
       el('li', {}, el('strong', {}, 'Perfect shapes: '), 'draw a line, circle, rectangle, triangle or star and keep the pencil still for a moment at the end.'),
+      el('li', {}, el('strong', {}, 'Select: '), 'tap the lasso, then circle ink (or tap one stroke). Drag the box to move it, drag a corner to resize, or tap a colour / the trash on the little bar.'),
       el('li', {}, el('strong', {}, 'Undo: '), 'tap with two fingers, or use the arrow button.'),
       el('li', {}, el('strong', {}, 'Scroll: '), 'use your finger — the Pencil only writes.'),
       el('li', {}, el('strong', {}, 'Tabs: '), 'in a Tabbed notebook, tap a tab to jump; press and hold to rename.')));

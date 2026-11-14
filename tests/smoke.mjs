@@ -185,6 +185,86 @@ await page.mouse.click(5, 1170);
 await page.click('[aria-label="Back to notes"]');
 await page.waitForSelector('.library');
 
+// ---- select tool: lasso, move, resize, recolor, delete, undo; plus pen colours
+await newNoteWith('Lined · Stone');
+const readStrokes = () => page.evaluate(async () => {
+  const req = indexedDB.open('braindump');
+  const db = await new Promise((r) => { req.onsuccess = () => r(req.result); });
+  const all = await new Promise((r) => { const q = db.transaction('items').objectStore('items').getAll(); q.onsuccess = () => r(q.result); });
+  const note = all.filter((i) => i.type === 'note').sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  const pg = await new Promise((r) => { const q = db.transaction('pages').objectStore('pages').get(note.pageIds[0]); q.onsuccess = () => r(q.result); });
+  return pg.strokes.map((st) => {
+    let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+    for (let i = 0; i < st.pts.length; i += 3) { minX = Math.min(minX, st.pts[i]); maxX = Math.max(maxX, st.pts[i]); minY = Math.min(minY, st.pts[i + 1]); maxY = Math.max(maxY, st.pts[i + 1]); }
+    return { c: st.c, s: st.s, minX, minY, maxX, maxY };
+  });
+});
+const sb2 = await pageBox();
+const k = 1640 / sb2.width; // page units per CSS pixel
+// pen colour from the palette
+await page.click('[aria-label="Ink color"]');
+await page.click('.palette [aria-label="Aqua"]');
+const wig = [];
+for (let i = 0; i <= 30; i++) wig.push([sb2.x + 200 + i * 5, sb2.y + 300 + Math.sin(i / 2) * 10]);
+await draw(wig);
+await page.waitForTimeout(900);
+let st = await readStrokes();
+check('pen draws in a chosen colour', st.length === 1 && st[0].c === '#3ddbe1', JSON.stringify(st.map((x) => x.c)));
+// lasso it
+await page.click('[aria-label="Select"]');
+await draw([[sb2.x + 170, sb2.y + 260], [sb2.x + 400, sb2.y + 255], [sb2.x + 410, sb2.y + 345], [sb2.x + 175, sb2.y + 350], [sb2.x + 170, sb2.y + 262]]);
+await page.waitForTimeout(300);
+check('lasso selects the writing', (await page.locator('.sel-box').count()) === 1);
+await page.screenshot({ path: `${SHOTS}/12-selection.png` });
+// move it 100px right, 80px down
+const before = st[0];
+const box = await page.locator('.sel-box').boundingBox();
+await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+await page.mouse.down();
+await page.mouse.move(box.x + box.width / 2 + 50, box.y + box.height / 2 + 40, { steps: 4 });
+await page.mouse.move(box.x + box.width / 2 + 100, box.y + box.height / 2 + 80, { steps: 4 });
+await page.mouse.up();
+await page.waitForTimeout(900);
+st = await readStrokes();
+const dx = (st[0].minX - before.minX) / k, dy = (st[0].minY - before.minY) / k;
+check('drag moves the selection', Math.abs(dx - 100) < 4 && Math.abs(dy - 80) < 4, `moved ${dx.toFixed(1)}, ${dy.toFixed(1)} px`);
+// resize from the bottom-right corner
+const se = await page.locator('.sel-handle.se').boundingBox();
+const w0 = st[0].maxX - st[0].minX;
+await page.mouse.move(se.x + se.width / 2, se.y + se.height / 2);
+await page.mouse.down();
+await page.mouse.move(se.x + se.width / 2 + 60, se.y + se.height / 2 + 20, { steps: 6 });
+await page.mouse.up();
+await page.waitForTimeout(900);
+const st2 = await readStrokes();
+const grow = (st2[0].maxX - st2[0].minX) / w0;
+check('corner handle resizes (and thickens) the writing', grow > 1.2 && st2[0].s > st[0].s, `x${grow.toFixed(2)}, size ${st[0].s}→${st2[0].s}`);
+// recolour from the selection bar
+await page.click('.sel-bar [aria-label="Hot pink"]');
+await page.waitForTimeout(900);
+st = await readStrokes();
+check('selection bar recolours', st[0].c === '#ff23aa', st[0].c);
+// undo recolour → back to aqua
+await page.click('[aria-label="Undo"]');
+await page.waitForTimeout(900);
+st = await readStrokes();
+check('undo reverses the recolour', st[0].c === '#3ddbe1', st[0].c);
+// tap-select the stroke, then delete it, then undo the delete
+await page.mouse.click(sb2.x + (st[0].minX + st[0].maxX) / 2 / k, sb2.y + (st[0].minY + st[0].maxY) / 2 / k);
+await page.waitForTimeout(300);
+const tapSelected = (await page.locator('.sel-box').count()) === 1;
+await page.click('.sel-bar [aria-label="Delete selection"]');
+await page.waitForTimeout(900);
+const afterDelete = (await readStrokes()).length;
+await page.click('[aria-label="Undo"]');
+await page.waitForTimeout(900);
+check('tap selects, delete removes, undo brings back', tapSelected && afterDelete === 0 && (await readStrokes()).length === 1, `tap=${tapSelected} afterDelete=${afterDelete}`);
+await page.click('[aria-label="Pen"]');
+await page.click('[aria-label="Ink color"]');
+await page.click('.palette [aria-label="Black"]');
+await page.click('[aria-label="Back to notes"]');
+await page.waitForSelector('.library');
+
 // tabbed notebook
 await newNoteWith('Tabbed notebook');
 const tabs = await page.locator('.page').first().locator('.tab').count();

@@ -4,7 +4,7 @@ import * as store from './store.js';
 import * as db from './db.js';
 import * as ink from './ink.js';
 import * as tpl from './templates.js';
-import { recognize, looksLikeScratch, scratchTargets, distToStroke, strokeBox, fromXY } from './shapes.js';
+import { recognize, looksLikeScratch, scratchTargets, distToStroke, strokeBox, fromXY, lassoSelect } from './shapes.js';
 import { el, icon, iconBtn, popover, actions, confirmBox, promptBox, toast, sheet } from './ui.js';
 import { pickTemplate } from './picker.js';
 import { importAsPages } from './importer.js';
@@ -63,9 +63,10 @@ function buildDOM() {
 
   const penBtn = iconBtn('pen', 'Pen', () => setTool('pen'));
   const eraserBtn = iconBtn('eraser', 'Eraser', () => setTool('eraser'));
+  const selectBtn = iconBtn('lasso', 'Select', () => setTool('select'));
   const sizeBtns = ink.SIZES.map((s, i) => el('button', { class: 'size-btn', 'aria-label': ['Fine', 'Medium', 'Thick'][i], onclick: () => { prefs.size = i; setTool('pen'); } },
     el('span', { class: 'dot', style: { width: 4 + i * 4 + 'px', height: 4 + i * 4 + 'px' } })));
-  const colorBtns = ['k', 'w'].map((c) => el('button', { class: `color-btn c-${c}`, 'aria-label': c === 'k' ? 'Black ink' : 'White ink', onclick: () => { prefs.color = c; setTool('pen'); } }));
+  const colorBtn = el('button', { class: 'color-btn', 'aria-label': 'Ink color', onclick: () => colorPopover(colorBtn) });
   const undoBtn = iconBtn('undo', 'Undo', () => undo());
   const redoBtn = iconBtn('redo', 'Redo', () => redo());
   const sunBtn = iconBtn('sun', 'Page brightness', () => brightnessPopover(sunBtn));
@@ -77,8 +78,8 @@ function buildDOM() {
     el('div', { class: 'tb-left' }, iconBtn('back', 'Back to notes', () => closeEditor()), title),
     el('div', { class: 'tb-tools' },
       el('div', { class: 'seg' }, penBtn, ...sizeBtns),
-      el('div', { class: 'seg' }, ...colorBtns),
-      el('div', { class: 'seg' }, eraserBtn),
+      el('div', { class: 'seg' }, colorBtn),
+      el('div', { class: 'seg' }, selectBtn, eraserBtn),
       el('div', { class: 'seg' }, undoBtn, redoBtn),
       el('div', { class: 'seg' }, sunBtn, addBtn, moreBtn)));
 
@@ -87,7 +88,7 @@ function buildDOM() {
   document.getElementById('app').append(root);
 
   S.root = root; S.pagesEl = pagesEl; S.pageNum = pageNum;
-  S.btns = { penBtn, eraserBtn, sizeBtns, colorBtns, undoBtn, redoBtn };
+  S.btns = { penBtn, eraserBtn, selectBtn, sizeBtns, colorBtn, undoBtn, redoBtn };
   S.live = el('canvas', { class: 'live' });
 
   pagesEl.addEventListener('pointerdown', onDown);
@@ -110,16 +111,33 @@ function buildDOM() {
 
 function refreshToolUI() {
   if (!S) return;
-  const { penBtn, eraserBtn, sizeBtns, colorBtns, undoBtn, redoBtn } = S.btns;
+  const { penBtn, eraserBtn, selectBtn, sizeBtns, colorBtn, undoBtn, redoBtn } = S.btns;
   penBtn.classList.toggle('on', prefs.tool === 'pen');
   eraserBtn.classList.toggle('on', prefs.tool === 'eraser');
+  selectBtn.classList.toggle('on', prefs.tool === 'select');
   sizeBtns.forEach((b, i) => b.classList.toggle('on', prefs.tool === 'pen' && prefs.size === i));
-  colorBtns.forEach((b) => b.classList.toggle('on', b.classList.contains(`c-${prefs.color}`)));
+  colorBtn.style.setProperty('--swatch', ink.colorOf(prefs.color));
   undoBtn.disabled = !S.undo.length;
   redoBtn.disabled = !S.redo.length;
 }
 
-function setTool(t) { prefs.tool = t; savePrefs(); refreshToolUI(); }
+function setTool(t) {
+  if (t !== 'select') clearSelection();
+  prefs.tool = t;
+  savePrefs();
+  refreshToolUI();
+}
+
+/** Ink colour palette. With something selected it recolours the selection; otherwise it sets the pen colour. */
+function colorPopover(anchor) {
+  const pop = popover(anchor, el('div', { class: 'pop-body' },
+    el('strong', {}, S.sel ? 'Recolor selection' : 'Ink color'),
+    el('div', { class: 'palette' }, ink.PALETTE.map((p) => el('button', {
+      class: `swatch-btn ${!S.sel && prefs.color === p.c ? 'on' : ''}`, 'aria-label': p.label, title: p.label,
+      style: { background: ink.colorOf(p.c) },
+      onclick: () => { pop.close(); if (S.sel) recolorSelection(p.c); else { prefs.color = p.c; setTool('pen'); } },
+    })))));
+}
 
 function applyLook() {
   S.pagesEl.style.setProperty('--dim', prefs.dim);
@@ -176,6 +194,7 @@ function layoutPages() {
   }
   S.pagesEl.append(endBtn);
   updateCurrentPage();
+  if (S.sel) positionSelection();
 }
 
 function onIntersect(entries) {
@@ -211,6 +230,8 @@ function unmount(id) {
   const m = S && S.mounted.get(id);
   if (!m) return;
   if (S.active && S.active.page.id === id) return; // never unmount mid-stroke
+  if (S.selDrag && S.selDrag.page.id === id) return;
+  if (S.sel && S.sel.pageId === id) S.sel = null;
   m.canvas.width = 0; m.canvas.height = 0;
   m.wrap.replaceChildren();
   S.mounted.delete(id);
@@ -325,7 +346,7 @@ function pagePoint(e, a) {
 function onDown(e) {
   if (!S || e.pointerType === 'touch') return;
   if (e.pointerType === 'mouse' && e.button !== 0) return;
-  if (e.target.closest('.tabs, button')) return;
+  if (e.target.closest('.tabs, button, .sel-layer')) return;
   const wrap = e.target.closest('.page');
   if (!wrap) return;
   const page = S.pages.get(wrap.dataset.id);
@@ -335,6 +356,13 @@ function onDown(e) {
   const a = S.active = { id: e.pointerId, page, wrap, rect: wrap.getBoundingClientRect(), tool: prefs.tool, removed: [] };
   const first = pagePoint(e, a);
   if (a.tool === 'eraser') { eraseAt(first[0], first[1]); return; }
+  if (a.tool === 'select') {
+    clearSelection();
+    a.lasso = first.slice();
+    a.liveCtx = ink.prepCanvas(S.live, page, S.cssW);
+    wrap.append(S.live);
+    return;
+  }
   a.stroke = { c: prefs.color, s: ink.SIZES[prefs.size], pts: first.slice() };
   if (e.pointerType !== 'pen') a.stroke.m = true;
   a.anchor = first;
@@ -354,6 +382,7 @@ function onMove(e) {
   for (const ev of list) {
     const [x, y, p] = pagePoint(ev, a);
     if (a.tool === 'eraser') { eraseAt(x, y); continue; }
+    if (a.tool === 'select') { a.lasso.push(x, y, 50); continue; }
     if (a.snapped) continue;
     const pts = a.stroke.pts;
     const lx = pts[pts.length - 3], ly = pts[pts.length - 2];
@@ -362,6 +391,7 @@ function onMove(e) {
     if (Math.hypot(x - a.anchor[0], y - a.anchor[1]) > 9) { a.anchor = [x, y]; armHold(); }
   }
   if (a.tool === 'pen' && !a.raf) a.raf = requestAnimationFrame(drawLive);
+  if (a.tool === 'select' && !a.raf) a.raf = requestAnimationFrame(drawLasso);
 }
 
 function armHold() {
@@ -408,6 +438,7 @@ function finishStroke(a) {
     if (a.removed.length) pushUndo({ type: 'remove', pageId: page.id, items: a.removed });
     return;
   }
+  if (a.tool === 'select') { finishLasso(a); return; }
   const stroke = a.snapped || a.stroke;
   if (!a.snapped && looksLikeScratch(stroke.pts)) {
     const hits = scratchTargets(stroke.pts, page.strokes);
@@ -469,6 +500,223 @@ function onTouchEnd(e) {
   }
 }
 
+// ---------------------------------------------------------------- select tool
+// Circle ink with the lasso (or tap one stroke) to select it. Then drag the box to move it,
+// drag a corner to resize it, or use the little bar to recolour or delete it.
+const SEL_PAD = 12;
+
+function selBox(strokes) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const s of strokes) {
+    const b = strokeBox(s.pts);
+    const r = s.s;
+    minX = Math.min(minX, b.minX - r); minY = Math.min(minY, b.minY - r);
+    maxX = Math.max(maxX, b.maxX + r); maxY = Math.max(maxY, b.maxY + r);
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+function drawLasso() {
+  const a = S && S.active;
+  if (!a || !a.liveCtx) return;
+  a.raf = 0;
+  const ctx = a.liveCtx;
+  ink.clear(ctx, a.page);
+  const p = a.lasso;
+  if (p.length < 6) return;
+  ctx.beginPath();
+  ctx.moveTo(p[0], p[1]);
+  for (let i = 3; i < p.length; i += 3) ctx.lineTo(p[i], p[i + 1]);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(139,108,240,0.12)';
+  ctx.fill();
+  ctx.setLineDash([14, 10]);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#8b6cf0';
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function finishLasso(a) {
+  const page = a.page;
+  const p = a.lasso;
+  let len = 0;
+  for (let i = 3; i < p.length; i += 3) len += Math.hypot(p[i] - p[i - 3], p[i + 1] - p[i - 2]);
+  if (len < 24) {
+    // a tap: pick the single stroke under the Pencil
+    for (let i = page.strokes.length - 1; i >= 0; i--) {
+      const st = page.strokes[i];
+      if (distToStroke(p[0], p[1], st.pts) <= 18 + st.s) { setSelection(page, [st]); return; }
+    }
+    return;
+  }
+  setSelection(page, lassoSelect(p, page.strokes).map((i) => page.strokes[i]));
+}
+
+function clearSelection() {
+  if (!S || !S.sel) return;
+  S.sel.layer.remove();
+  S.sel = null;
+  S.selDrag = null;
+}
+
+function setSelection(page, strokes) {
+  clearSelection();
+  const m = S.mounted.get(page.id);
+  if (!m || !strokes.length) return;
+  const box = el('div', { class: 'sel-box', 'aria-label': 'Selection — drag to move' },
+    ...['nw', 'ne', 'sw', 'se'].map((c) => el('div', { class: `sel-handle ${c}`, 'data-corner': c, 'aria-label': 'Drag to resize' })));
+  const bar = el('div', { class: 'sel-bar' },
+    ...ink.PALETTE.map((p) => el('button', {
+      class: 'sel-color', 'aria-label': p.label, title: p.label, style: { background: ink.colorOf(p.c) },
+      onclick: (e) => { e.stopPropagation(); recolorSelection(p.c); },
+    })),
+    el('button', { class: 'sel-del', 'aria-label': 'Delete selection', title: 'Delete', html: icon('trash', 20), onclick: (e) => { e.stopPropagation(); deleteSelection(); } }));
+  const layer = el('div', { class: 'sel-layer' }, box, bar);
+  m.wrap.append(layer);
+  S.sel = { pageId: page.id, strokes, box: selBox(strokes), layer, boxEl: box, bar };
+  box.addEventListener('pointerdown', onSelDown);
+  box.addEventListener('pointermove', onSelMove);
+  box.addEventListener('pointerup', onSelUp);
+  box.addEventListener('pointercancel', onSelUp);
+  positionSelection();
+}
+
+function positionSelection(box = S.sel && S.sel.box) {
+  if (!S || !S.sel || !box) return;
+  const page = S.pages.get(S.sel.pageId);
+  const k = S.cssW / page.w; // page units → CSS pixels
+  const L = (box.minX - SEL_PAD) * k, T = (box.minY - SEL_PAD) * k;
+  const W = (box.maxX - box.minX + 2 * SEL_PAD) * k, H = (box.maxY - box.minY + 2 * SEL_PAD) * k;
+  Object.assign(S.sel.boxEl.style, { left: L + 'px', top: T + 'px', width: W + 'px', height: H + 'px' });
+  const bar = S.sel.bar;
+  const bw = bar.offsetWidth || 320, bh = bar.offsetHeight || 46;
+  let top = T - bh - 14;
+  if (top < 6) top = T + H + 14;
+  const pageH = (page.h * S.cssW) / page.w;
+  if (top + bh > pageH - 6) top = Math.max(6, T + 10);
+  const left = Math.max(6, Math.min(S.cssW - bw - 6, L + W / 2 - bw / 2));
+  Object.assign(bar.style, { left: left + 'px', top: top + 'px' });
+}
+
+function transformPt(x, y, t) {
+  return t.k !== 1 ? [t.ax + (x - t.ax) * t.k, t.ay + (y - t.ay) * t.k] : [x + t.dx, y + t.dy];
+}
+
+function transformStroke(s, t) {
+  const pts = s.pts.slice();
+  for (let i = 0; i < pts.length; i += 3) {
+    const [x, y] = transformPt(pts[i], pts[i + 1], t);
+    pts[i] = Math.round(x); pts[i + 1] = Math.round(y);
+  }
+  const { _box, ...rest } = s;
+  const out = { ...rest, pts };
+  if (t.k !== 1) out.s = Math.max(1.5, Math.min(80, Math.round(s.s * t.k * 100) / 100));
+  return out;
+}
+
+function transformBox(b, t) {
+  const [x1, y1] = transformPt(b.minX, b.minY, t);
+  const [x2, y2] = transformPt(b.maxX, b.maxY, t);
+  return { minX: Math.min(x1, x2), minY: Math.min(y1, y2), maxX: Math.max(x1, x2), maxY: Math.max(y1, y2) };
+}
+
+function onSelDown(e) {
+  if (!S || !S.sel || S.selDrag) return;
+  e.stopPropagation();
+  e.preventDefault();
+  const page = S.pages.get(S.sel.pageId);
+  const m = S.mounted.get(page.id);
+  if (!m) return;
+  const rect = m.wrap.getBoundingClientRect();
+  const toPage = (ev) => [((ev.clientX - rect.left) / rect.width) * page.w, ((ev.clientY - rect.top) / rect.height) * page.h];
+  const [x, y] = toPage(e);
+  const corner = e.target.dataset ? e.target.dataset.corner : null;
+  const b = S.sel.box;
+  const anchor = corner ? { x: corner.includes('w') ? b.maxX : b.minX, y: corner.includes('n') ? b.maxY : b.minY } : null;
+  try { S.sel.boxEl.setPointerCapture(e.pointerId); } catch {}
+  S.selDrag = { id: e.pointerId, page, toPage, start: [x, y], corner, anchor,
+    startDist: anchor ? Math.max(1, Math.hypot(x - anchor.x, y - anchor.y)) : 0, t: { k: 1, dx: 0, dy: 0 } };
+  // draw everything except the selection, and the selection on the live layer while it moves
+  ink.renderStrokes(m.canvas.getContext('2d'), page, new Set(S.sel.strokes));
+  ink.prepCanvas(S.live, page, S.cssW);
+  m.wrap.append(S.live);
+  drawSelDrag();
+}
+
+function onSelMove(e) {
+  const d = S && S.selDrag;
+  if (!d || e.pointerId !== d.id) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const [x, y] = d.toPage(e);
+  if (d.corner) {
+    const k = Math.max(0.15, Math.min(8, Math.hypot(x - d.anchor.x, y - d.anchor.y) / d.startDist));
+    d.t = { k, ax: d.anchor.x, ay: d.anchor.y, dx: 0, dy: 0 };
+  } else {
+    d.t = { k: 1, dx: x - d.start[0], dy: y - d.start[1] };
+  }
+  if (!d.raf) d.raf = requestAnimationFrame(drawSelDrag);
+}
+
+function drawSelDrag() {
+  const d = S && S.selDrag;
+  if (!d || !S.sel) return;
+  d.raf = 0;
+  const ctx = S.live.getContext('2d');
+  ink.clear(ctx, d.page);
+  for (const s of S.sel.strokes) ink.drawStroke(ctx, transformStroke(s, d.t), { live: true });
+  positionSelection(transformBox(S.sel.box, d.t));
+}
+
+function onSelUp(e) {
+  const d = S && S.selDrag;
+  if (!d || e.pointerId !== d.id) return;
+  e.stopPropagation();
+  cancelAnimationFrame(d.raf);
+  S.selDrag = null;
+  S.live.remove();
+  const changed = d.t.k !== 1 || Math.abs(d.t.dx) + Math.abs(d.t.dy) >= 1;
+  if (!changed) { renderInk(d.page.id); positionSelection(); return; }
+  replaceSelection(S.sel.strokes.map((s) => transformStroke(s, d.t)));
+}
+
+function swapStrokes(page, from, to) {
+  for (let i = 0; i < from.length; i++) {
+    const j = page.strokes.indexOf(from[i]);
+    if (j >= 0) page.strokes[j] = to[i];
+  }
+}
+
+function replaceSelection(newStrokes) {
+  const page = S.pages.get(S.sel.pageId);
+  const before = S.sel.strokes;
+  swapStrokes(page, before, newStrokes);
+  pushUndo({ type: 'replace', pageId: page.id, before, after: newStrokes });
+  S.sel.strokes = newStrokes;
+  S.sel.box = selBox(newStrokes);
+  renderInk(page.id);
+  positionSelection();
+  markDirty(page.id);
+}
+
+function recolorSelection(c) {
+  if (!S.sel) return;
+  replaceSelection(S.sel.strokes.map(({ _box, ...s }) => ({ ...s, c })));
+}
+
+function deleteSelection() {
+  if (!S.sel) return;
+  const page = S.pages.get(S.sel.pageId);
+  const gone = new Set(S.sel.strokes);
+  const items = page.strokes.map((s, i) => ({ s, i })).filter((x) => gone.has(x.s));
+  page.strokes = page.strokes.filter((s) => !gone.has(s));
+  pushUndo({ type: 'remove', pageId: page.id, items });
+  clearSelection();
+  renderInk(page.id);
+  markDirty(page.id);
+}
+
 // ---------------------------------------------------------------- undo / redo
 function pushUndo(action) {
   S.undo.push(action);
@@ -480,7 +728,12 @@ function pushUndo(action) {
 function apply(action, reverse) {
   const page = S.pages.get(action.pageId);
   if (!page) return;
-  if (action.type === 'add') {
+  clearSelection();
+  if (action.type === 'replace') {
+    // moved / resized / recoloured strokes swap places with their earlier versions
+    if (reverse) swapStrokes(page, action.after, action.before);
+    else swapStrokes(page, action.before, action.after);
+  } else if (action.type === 'add') {
     if (reverse) page.strokes = page.strokes.filter((s) => !action.strokes.includes(s));
     else page.strokes.push(...action.strokes);
   } else if (reverse) {

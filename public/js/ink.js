@@ -3,6 +3,13 @@
 import { getStroke } from '../vendor/perfect-freehand.mjs';
 
 export const COLORS = { k: '#1c1b1f', w: '#f6f4f8' };
+// The owner's ink colours: black, white + five picks. Strokes store 'k'/'w' or the hex itself.
+export const PALETTE = [
+  { c: 'k', label: 'Black' }, { c: 'w', label: 'White' },
+  { c: '#3ddbe1', label: 'Aqua' }, { c: '#6ed144', label: 'Green' }, { c: '#bea1f7', label: 'Lavender' },
+  { c: '#ffa1d5', label: 'Pink' }, { c: '#ff23aa', label: 'Hot pink' },
+];
+export const colorOf = (c) => COLORS[c] || (typeof c === 'string' && /^#[0-9a-f]{3,8}$/i.test(c) ? c : COLORS.k);
 export const SIZES = [5, 9, 16]; // fine / medium / thick, in page units (page is 1640 wide)
 
 const pathCache = new WeakMap();
@@ -53,7 +60,7 @@ export function strokePath(stroke) {
 }
 
 export function drawStroke(ctx, stroke, { live = false } = {}) {
-  const color = COLORS[stroke.c] || COLORS.k;
+  const color = colorOf(stroke.c);
   if (stroke.shape) {
     ctx.strokeStyle = color;
     ctx.lineWidth = stroke.s * 1.1;
@@ -81,7 +88,7 @@ export function clear(ctx, page) {
   ctx.clearRect(0, 0, page.w, page.h);
 }
 
-export function renderStrokes(ctx, page) {
+export function renderStrokes(ctx, page, skip = null) {
   clear(ctx, page);
-  for (const s of page.strokes) drawStroke(ctx, s);
+  for (const s of page.strokes) if (!skip || !skip.has(s)) drawStroke(ctx, s);
 }
