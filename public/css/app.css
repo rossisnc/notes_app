@@ -163,6 +163,12 @@ mark { background: #ffe58a; color: #1a1a1a; border-radius: 3px; padding: 0 2px; 
 .popover { position: fixed; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 40px rgba(0,0,0,.6); z-index: 60; }
 .pop-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
 .pop-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.place-seg { display: flex; gap: 4px; background: var(--panel-2); border-radius: 13px; padding: 3px; }
+.place-opt { flex: 1; min-height: 46px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600; font-size: 15px; cursor: pointer; }
+.place-opt.on { background: var(--accent); color: var(--accent-ink); }
+.add-pop .btn { justify-content: center; }
+.row-2 { display: flex; gap: 8px; }
+.row-2 .btn { flex: 1; padding: 0 10px; font-size: 15px; }
 .slider { width: 100%; accent-color: var(--accent); height: 34px; }
 .switch { width: 26px; height: 26px; accent-color: var(--accent); flex: none; }
 .switch-row { cursor: pointer; }

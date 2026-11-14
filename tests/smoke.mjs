@@ -141,6 +141,7 @@ await page.mouse.click(5, 1170);
 
 // add page, rename note
 await page.click('[aria-label="Add page"]');
+await page.click('.add-pop .btn.primary');
 await page.waitForTimeout(500);
 check('add page', await page.locator('.page').count() === 2);
 await page.fill('.title-input', 'Grocery list');
@@ -149,6 +150,40 @@ await page.waitForTimeout(300);
 await page.click('[aria-label="Back to notes"]');
 await page.waitForSelector('.library');
 check('note listed with new title', await page.locator('.row:has-text("Grocery list")').count() === 1);
+
+// new pages can go BEFORE the current page (remembered per note)
+await newNoteWith('Lined · Peach');
+const pb = await pageBox();
+await draw([[pb.x + 150, pb.y + 300], [pb.x + 400, pb.y + 320]]); // mark the original page
+await page.waitForTimeout(900);
+await page.click('[aria-label="Add page"]');
+await page.click('.place-opt:has-text("Before")');
+await page.click('.add-pop .btn.primary');
+await page.waitForTimeout(900);
+const order = await page.evaluate(async () => {
+  const req = indexedDB.open('braindump');
+  const db = await new Promise((r) => { req.onsuccess = () => r(req.result); });
+  const get = (store, id) => new Promise((r) => { const q = db.transaction(store).objectStore(store).get(id); q.onsuccess = () => r(q.result); });
+  const all = await new Promise((r) => { const q = db.transaction('items').objectStore('items').getAll(); q.onsuccess = () => r(q.result); });
+  const note = all.filter((i) => i.type === 'note' && i.title !== 'Grocery list').sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  const pages = await Promise.all(note.pageIds.map((id) => get('pages', id)));
+  return { strokes: pages.map((p) => p.strokes.length), addBefore: note.addBefore };
+});
+check('"Before" puts the new page in front of the current one', JSON.stringify(order.strokes) === '[0,1]' && order.addBefore === true, JSON.stringify(order));
+await page.click('[aria-label="Add page"]');
+const remembered = await page.locator('.place-opt.on').textContent();
+check('before/after choice is remembered for the note', /Before/.test(remembered), remembered);
+await page.mouse.click(5, 1170);
+await page.click('[aria-label="Back to notes"]');
+await page.waitForSelector('.library');
+await newNoteWith('Lemon Week');
+await page.click('[aria-label="Add page"]');
+const plannerDefault = await page.locator('.place-opt.on').textContent();
+check('weekly planner defaults to adding pages before', /Before/.test(plannerDefault), plannerDefault);
+await page.screenshot({ path: `${SHOTS}/11-add-page-menu.png` });
+await page.mouse.click(5, 1170);
+await page.click('[aria-label="Back to notes"]');
+await page.waitForSelector('.library');
 
 // tabbed notebook
 await newNoteWith('Tabbed notebook');

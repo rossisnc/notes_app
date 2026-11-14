@@ -69,7 +69,7 @@ function buildDOM() {
   const undoBtn = iconBtn('undo', 'Undo', () => undo());
   const redoBtn = iconBtn('redo', 'Redo', () => redo());
   const sunBtn = iconBtn('sun', 'Page brightness', () => brightnessPopover(sunBtn));
-  const addBtn = iconBtn('plus', 'Add page', () => addPageAfterCurrent());
+  const addBtn = iconBtn('plus', 'Add page', () => addPagePopover(addBtn));
   const moreBtn = iconBtn('more', 'More', () => moreMenu());
   const pageNum = el('div', { class: 'page-num' });
 
@@ -172,7 +172,7 @@ function layoutPages() {
   });
   let endBtn = S.pagesEl.querySelector('.add-page-end');
   if (!endBtn) {
-    endBtn = el('button', { class: 'add-page-end', html: icon('plus') + '<span>Add page</span>', onclick: () => addPage(S.note.pageIds.length - 1) });
+    endBtn = el('button', { class: 'add-page-end', html: icon('plus') + '<span>Add page</span>', onclick: () => addPageAtEnd() });
   }
   S.pagesEl.append(endBtn);
   updateCurrentPage();
@@ -532,35 +532,81 @@ async function flushSave() {
 }
 
 // ---------------------------------------------------------------- pages: add / change / delete
-async function addPage(afterIndex, bg) {
-  const ref = S.pages.get(S.note.pageIds[afterIndex]) || S.pages.get(S.note.pageIds[S.note.pageIds.length - 1]);
+// Planners read best newest-first, so new pages go on top by default there.
+const NEWEST_FIRST = new Set(['lemon-week', 'weekly']);
+
+/** Should new pages go before the current page? Remembered per note once chosen. */
+function placeBefore() {
+  if (typeof S.note.addBefore === 'boolean') return S.note.addBefore;
+  const first = S.pages.get(S.note.pageIds[0]);
+  return !!(first && first.bg.kind === 'template' && NEWEST_FIRST.has(first.bg.id));
+}
+
+/** A blank page in the same style (and tab section) as `ref`, or in style `bg`. */
+async function newPageLike(ref, bg) {
   const useBg = bg || (ref && ref.bg.kind !== 'image' ? ref.bg : S.note.lastBg) || tpl.DEFAULT_BG;
   const size = await store.sizeForBg(useBg);
-  const extra = {};
-  if (ref && ref.tabId) {
-    extra.tabId = ref.tabId;
-    // add at the end of this tab's section
-    let last = afterIndex;
-    S.note.pageIds.forEach((pid, i) => { if (S.pages.get(pid)?.tabId === ref.tabId) last = i; });
-    afterIndex = Math.max(afterIndex, last);
-  }
-  const page = store.newPage(S.note.id, useBg, size, extra);
+  return store.newPage(S.note.id, useBg, size, ref && ref.tabId ? { tabId: ref.tabId } : {});
+}
+
+/** Put new pages right before or right after the page you're looking at. */
+async function insertNearCurrent(pages, before) {
+  if (!S || !pages.length) return;
+  const idx = Math.max(0, S.note.pageIds.indexOf(S.currentPageId));
+  const cur = S.pages.get(S.note.pageIds[idx]);
+  if (cur && cur.tabId) pages.forEach((p) => { p.tabId = cur.tabId; });
+  for (const p of pages) S.pages.set(p.id, p);
+  await store.insertPages(S.note, pages, before ? idx - 1 : idx);
+  layoutPages();
+  scrollToPage(pages[0].id);
+}
+
+/** The "Add page" button at the very bottom of a note. */
+async function addPageAtEnd() {
+  const last = S.pages.get(S.note.pageIds[S.note.pageIds.length - 1]);
+  const page = await newPageLike(last);
   S.pages.set(page.id, page);
-  await store.insertPages(S.note, [page], afterIndex);
+  await store.insertPages(S.note, [page]);
   layoutPages();
   scrollToPage(page.id);
 }
 
-function addPageAfterCurrent() {
-  const idx = S.note.pageIds.indexOf(S.currentPageId);
-  addPage(idx < 0 ? S.note.pageIds.length - 1 : idx);
+/** The + button: choose before/after (remembered per note), then what kind of page. */
+function addPagePopover(anchor) {
+  let before = placeBefore();
+  const seg = el('div', { class: 'place-seg', role: 'radiogroup', 'aria-label': 'Where the new page goes' });
+  const option = (value, label, iconName) => el('button', {
+    class: `place-opt ${before === value ? 'on' : ''}`, role: 'radio', 'aria-checked': String(before === value),
+    html: icon(iconName, 18) + `<span>${label}</span>`,
+    onclick: () => { before = value; S.note.addBefore = value; store.saveItem(S.note); draw(); },
+  });
+  const draw = () => seg.replaceChildren(option(true, 'Before', 'up'), option(false, 'After', 'down'));
+  draw();
+  const go = async (kind) => {
+    pop.close();
+    const cur = S.pages.get(S.currentPageId);
+    if (kind === 'same') return insertNearCurrent([await newPageLike(cur)], before);
+    if (kind === 'style') {
+      const bg = await pickTemplate({ title: 'New page' });
+      if (bg) await insertNearCurrent([await newPageLike(cur, bg)], before);
+      return;
+    }
+    const pages = await importAsPages(S.note.id);
+    if (pages && pages.length) await insertNearCurrent(pages, before);
+  };
+  const pop = popover(anchor, el('div', { class: 'pop-body add-pop' },
+    el('strong', {}, 'Add a page'),
+    seg,
+    el('button', { class: 'btn primary', onclick: () => go('same') }, 'Same style as this page'),
+    el('div', { class: 'row-2' },
+      el('button', { class: 'btn', onclick: () => go('style') }, 'Different style…'),
+      el('button', { class: 'btn', onclick: () => go('scan') }, 'Scan or photo…')),
+    el('p', { class: 'muted small' }, 'Before or after the page you\'re on. Remembered for this note.')));
 }
 
 async function moreMenu() {
   const idx = S.note.pageIds.indexOf(S.currentPageId);
   const choice = await actions('This page & note', [
-    { label: 'Add page with a different template…', value: 'add-tpl', icon: 'page' },
-    { label: 'Add scanned pages / photos here…', value: 'add-scan', icon: 'scan' },
     { label: "Change this page's template…", value: 'change', icon: 'page' },
     S.note.tabs ? { label: 'Edit tabs…', value: 'tabs', icon: 'notes' } : null,
     idx > 0 ? { label: 'Move page up', value: 'up' } : null,
@@ -569,19 +615,7 @@ async function moreMenu() {
   ]);
   if (!choice || !S) return;
   const page = S.pages.get(S.currentPageId);
-  if (choice === 'add-tpl') {
-    const bg = await pickTemplate({ title: 'New page' });
-    if (bg) addPage(idx, bg);
-  } else if (choice === 'add-scan') {
-    const pages = await importAsPages(S.note.id);
-    if (pages && pages.length) {
-      if (page && page.tabId) pages.forEach((p) => { p.tabId = page.tabId; });
-      for (const p of pages) S.pages.set(p.id, p);
-      await store.insertPages(S.note, pages, idx);
-      layoutPages();
-      scrollToPage(pages[0].id);
-    }
-  } else if (choice === 'change') {
+  if (choice === 'change') {
     const bg = await pickTemplate({ title: "This page's template" });
     if (bg && page) {
       page.bg = bg;
