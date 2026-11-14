@@ -65,7 +65,7 @@ function buildDOM() {
   const eraserBtn = iconBtn('eraser', 'Eraser', () => setTool('eraser'));
   const selectBtn = iconBtn('lasso', 'Select', () => setTool('select'));
   const sizeBtns = ink.SIZES.map((s, i) => el('button', { class: 'size-btn', 'aria-label': ['Fine', 'Medium', 'Thick'][i], onclick: () => { prefs.size = i; setTool('pen'); } },
-    el('span', { class: 'dot', style: { width: 4 + i * 4 + 'px', height: 4 + i * 4 + 'px' } })));
+    el('span', { class: 'dot', style: { width: [3, 6, 10][i] + 'px', height: [3, 6, 10][i] + 'px' } })));
   const colorBtn = el('button', { class: 'color-btn', 'aria-label': 'Ink color', onclick: () => colorPopover(colorBtn) });
   const undoBtn = iconBtn('undo', 'Undo', () => undo());
   const redoBtn = iconBtn('redo', 'Redo', () => redo());

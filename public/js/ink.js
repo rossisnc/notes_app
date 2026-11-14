@@ -10,7 +10,7 @@ export const PALETTE = [
   { c: '#ffa1d5', label: 'Pink' }, { c: '#ff23aa', label: 'Hot pink' },
 ];
 export const colorOf = (c) => COLORS[c] || (typeof c === 'string' && /^#[0-9a-f]{3,8}$/i.test(c) ? c : COLORS.k);
-export const SIZES = [5, 9, 16]; // fine / medium / thick, in page units (page is 1640 wide)
+export const SIZES = [2.5, 5, 9]; // fine / medium / thick, in page units (page is 1640 wide)
 
 const pathCache = new WeakMap();
 
